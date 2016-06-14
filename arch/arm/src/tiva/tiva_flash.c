@@ -57,14 +57,15 @@
 #include "up_arch.h"
 #include "chip.h"
 
+ // #include "tiva_flash.h"
+
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define TIVA_VIRTUAL_NPAGES (TIVA_FLASH_NPAGES - CONFIG_TIVA_FLASH_STARTPAGE)
-#define TIVA_VIRTUAL_BASE   (TIVA_FLASH_BASE \
-                             + CONFIG_TIVA_FLASH_STARTPAGE * TIVA_FLASH_PAGESIZE)
+#define TIVA_VIRTUAL_NPAGES (TIVA_FLASH_NPAGES)
+#define TIVA_VIRTUAL_BASE   (0x0)
 
 /****************************************************************************
  * Private Types
@@ -131,22 +132,30 @@ static struct tiva_dev_s g_lmdev =
  *
  * Description:
  *   Erase several blocks, each of the size previously reported.
- *
+ * 
+ * param startblock is of size of a page either in M3/M4  
  ****************************************************************************/
 
 static int tiva_erase(FAR struct mtd_dev_s *dev, off_t startblock,
                       size_t nblocks)
 {
   int curpage;
-  uint32_t pageaddr;
+
+  uint32_t pageaddr = TIVA_VIRTUAL_BASE + ((startblock-1) * TIVA_FLASH_PAGESIZE);
 
   DEBUGASSERT(nblocks <= TIVA_VIRTUAL_NPAGES);
 
-  for (curpage = startblock; curpage < nblocks; curpage++)
+  for (curpage = 0; curpage < nblocks; curpage++)
     {
-      pageaddr = TIVA_VIRTUAL_BASE + curpage * TIVA_FLASH_PAGESIZE;
+      pageaddr +=   TIVA_FLASH_PAGESIZE;
 
-      finfo("Erase page at %08x\n", pageaddr);
+      fvdbg("Erase page at %08x\n", pageaddr);
+
+      //
+      // Clear the flash access and error interrupts.
+      //  
+
+      // putreg32(FLASH_FCMISC_AMISC | FLASH_FCMISC_VOLTMISC | FLASH_FCMISC_ERMISC, TIVA_FLASH_FCMISC);
 
       /* set page address */
 
@@ -160,6 +169,17 @@ static int tiva_erase(FAR struct mtd_dev_s *dev, off_t startblock,
       /* wait until erase has finished */
 
       while (getreg32(TIVA_FLASH_FMC) & FLASH_FMC_ERASE);
+
+      //
+      // Return an error if an access violation or erase error occurred.
+      //
+
+      if(getreg32(TIVA_FLASH_FCRIS) & (FLASH_FCRIS_ARIS | FLASH_FCRIS_VOLTRIS |
+                               FLASH_FCRIS_ERRIS))
+      {
+          return(-1);
+      }
+
     }
 
   return OK;
@@ -170,7 +190,7 @@ static int tiva_erase(FAR struct mtd_dev_s *dev, off_t startblock,
  *
  * Description:
  *   Read the specified number of blocks into the user provided buffer.
- *
+ * param startblock has a size of a page either in M3/M4
  ****************************************************************************/
 
 static ssize_t tiva_bread(FAR struct mtd_dev_s *dev, off_t startblock, size_t nblocks,
@@ -229,12 +249,15 @@ static ssize_t tiva_bwrite(FAR struct mtd_dev_s *dev, off_t startblock, size_t n
  * Description:
  *   Read the specified number of bytes to the user provided buffer.
  *
+ *
+ * Note - Now, the argument off_t offset will have the address of the memory 
+ * location
  ****************************************************************************/
 
 static ssize_t tiva_read(FAR struct mtd_dev_s *dev, off_t offset, size_t nbytes,
                          FAR uint8_t *buf)
 {
-  DEBUGASSERT(offset + nbytes < TIVA_VIRTUAL_NPAGES * TIVA_FLASH_PAGESIZE);
+  DEBUGASSERT(offset  < TIVA_VIRTUAL_NPAGES * TIVA_FLASH_PAGESIZE);
 
   memcpy(buf, (void *)(TIVA_VIRTUAL_BASE + offset), nbytes);
 
@@ -248,13 +271,99 @@ static ssize_t tiva_read(FAR struct mtd_dev_s *dev, off_t offset, size_t nbytes,
  *   Some FLASH parts have the ability to write an arbitrary number of
  *   bytes to an arbitrary offset on the device.
  *
+ * param offset is the starting address in flash to be programmed.  Must
+ * be a multiple of four.
+ * param nbytes is the number of bytes to be programmed.  Must be a. Must
+ * multiple of four.
+ * param buf is a pointer to the data to be programmed.
  ****************************************************************************/
 
 #ifdef CONFIG_MTD_BYTE_WRITE
 static ssize_t tiva_write(FAR struct mtd_dev_s *dev, off_t offset, size_t nbytes,
                           FAR const uint8_t *buf)
 {
-  return -ENOSYS;
+    FAR uint32_t *pui32Data = (uint32_t *)buf;
+
+    //
+    // Clear the flash access and error interrupts.
+    //  
+
+    putreg32(FLASH_FCMISC_AMISC | FLASH_FCMISC_VOLTMISC | FLASH_FCMISC_ERMISC, TIVA_FLASH_FCMISC);
+
+    #if defined(CONFIG_ARCH_CHIP_TM4C1294NC)
+
+    while(nbytes)
+    {
+        //
+        // Set the address of this block of words.
+        //
+        putreg32((offset & ~(0x7f)), TIVA_FLASH_FMA);
+
+        //
+        // Loop over the words in this 32-word block.
+        //
+        while(((offset & 0x7c) || (getreg32(TIVA_FLASH_FWBN) == 0)) &&
+              (nbytes != 0))
+        {
+            //
+            // Write this word into the write buffer.
+            //
+            putreg32(*pui32Data++, (TIVA_FLASH_FWBN + (offset & 0x7c)));
+            offset += 4;
+            nbytes -= 4;
+        }
+
+        //
+        // Program the contents of the write buffer into flash.
+        //
+
+        putreg32(FLASH_FMC_WRKEY | FLASH_FMC2_WRBUF, TIVA_FLASH_FMC2);
+
+        //
+        // Wait until the write buffer has been programmed.
+        //
+        while(getreg32(TIVA_FLASH_FMC2) & FLASH_FMC2_WRBUF)
+        {
+        }
+    }
+
+    #else
+
+    while(nbytes)
+    {
+        //
+        // Program the next word.
+        //
+        putreg32(offset, TIVA_FLASH_FMA);
+        putreg32(*pui32Data, TIVA_FLASH_FMD);
+        putreg32(FLASH_FMC_WRKEY | FLASH_FMC_WRITE, TIVA_FLASH_FMC);
+
+        //
+        // Wait until the word has been programmed.
+        //
+        while(getreg32(TIVA_FLASH_FMC) & FLASH_FMC_WRITE);
+
+        //
+        // Increment to the next word.
+        //
+        pui32Data++;
+        offset += 4;
+        nbytes -= 4;
+
+    }
+
+    #endif
+
+    //
+    // Return an error if an access violation occurred.
+    //
+    if(getreg32(TIVA_FLASH_FCRIS) & (FLASH_FCRIS_ARIS | FLASH_FCRIS_VOLTRIS |
+                             FLASH_FCRIS_INVDRIS | FLASH_FCRIS_PROGRIS))
+    {
+        return(-1);
+    }
+
+    return (0);
 }
 #endif
 
