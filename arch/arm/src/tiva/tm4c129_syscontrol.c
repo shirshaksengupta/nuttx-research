@@ -411,3 +411,21 @@ void up_clockconfig(void)
 
   putreg32(BOARD_ALTCLKCFG, TIVA_SYSCON_ALTCLKCFG);
 }
+
+/****************************************************************************
+ * Name: tiva_delay
+ *
+ * Description:
+ *   Wait for the newly selected oscillator(s) to settle.  This is tricky because
+ *   the time that we wait can be significant and is determined by the previous
+ *   clock setting, not the one that we are configuring.
+ *
+ ****************************************************************************/
+
+void tiva_delay(uint32_t delay)
+{
+  __asm__ __volatile__("1:\n"
+                       "\tsubs  %0, #1\n"
+                       "\tbne   1b\n"
+                       : "=r"(delay) : "r"(delay));
+}

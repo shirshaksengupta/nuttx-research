@@ -122,3 +122,7 @@ endif
 ifeq ($(CONFIG_TIVA_FLASH),y)
 CHIP_CSRCS += tiva_flash.c
 endif
+
+ifeq ($(CONFIG_ARCH_CHIP_TM4C1294NC),y)
+CHIP_CSRCS += tiva_eeprom.c
+endif

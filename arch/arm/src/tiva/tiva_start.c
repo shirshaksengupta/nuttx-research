@@ -160,6 +160,11 @@ void __start(void)
   tiva_boardinitialize();
   showprogress('F');
 
+  /*Initialize the EEPROM for M4*/
+  #ifdef CONFIG_ARCH_CHIP_TM4C1294NC
+    tiva_EEPROMInit();
+  #endif
+
   /* Then start NuttX */
 
   showprogress('\r');
