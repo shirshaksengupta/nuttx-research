@@ -299,6 +299,17 @@ FAR struct mtd_dev_s *mtd_rwb_initialize(FAR struct mtd_dev_s *mtd);
 int ftl_initialize(int minor, FAR struct mtd_dev_s *mtd);
 
 /****************************************************************************
+ * Name: flash_eraseall
+ *
+ * Description:
+ *   Call a block driver with the MTDIOC_BULKERASE ioctl command.  This will
+ *   cause the MTD driver to erase all of the flash.
+ *
+ ****************************************************************************/
+
+int flash_eraseall(FAR const char *driver);
+
+/****************************************************************************
  * Name: smart_initialize
  *
  * Description:
@@ -402,16 +413,6 @@ void at24c_uninitialize(FAR struct mtd_dev_s *mtd);
 FAR struct mtd_dev_s *at25_initialize(FAR struct spi_dev_s *dev);
 
 /****************************************************************************
- * Name: is25xp
- *
- * Description:
- *   Initializes the driver for SPI-based IS25xP FLASH
- *
- ****************************************************************************/
-
-FAR struct mtd_dev_s *is25xp_initialize(FAR struct spi_dev_s *dev);
-
-/****************************************************************************
  * Name: m25p_initialize
  *
  * Description:
@@ -476,18 +477,6 @@ FAR struct mtd_dev_s *sst25_initialize(FAR struct spi_dev_s *dev);
 FAR struct mtd_dev_s *sst25xx_initialize(FAR struct spi_dev_s *dev);
 
 /****************************************************************************
- * Name: sst26_initialize_spi
- *
- * Description:
- *   Initializes the driver for SPI-based SST26 FLASH
- *
- *   Supports SST26VF016 SST26VF032 SST26VF064
- *
- ****************************************************************************/
-
-FAR struct mtd_dev_s *sst26_initialize_spi(FAR struct spi_dev_s *dev);
-
-/****************************************************************************
  * Name: sst39vf_initialize
  *
  * Description:
@@ -525,19 +514,6 @@ FAR struct mtd_dev_s *s25fl1_initialize(FAR struct qspi_dev_s *qspi,
                                         bool unprotect);
 
 /****************************************************************************
- * Name: n25qxxx_initialize
- *
- * Description:
- *   Create an initialize MTD device instance for the QuadSPI-based N25Qxxx
- *   FLASH part from Micron.
- *
- ****************************************************************************/
-
-struct qspi_dev_s; /* Forward reference */
-FAR struct mtd_dev_s *n25qxxx_initialize(FAR struct qspi_dev_s *qspi,
-                                         bool unprotect);
-
-/****************************************************************************
  * Name: up_flashinitialize
  *
  * Description:
@@ -546,6 +522,16 @@ FAR struct mtd_dev_s *n25qxxx_initialize(FAR struct qspi_dev_s *qspi,
  ****************************************************************************/
 
 FAR struct mtd_dev_s *up_flashinitialize(void);
+
+/****************************************************************************
+ * Name: up_eeprominitialize
+ *
+ * Description:
+ *   Create an initialized MTD device instance for internal eeprom.
+ *
+ ****************************************************************************/
+
+FAR struct mtd_dev_s *up_eeprominitialize(void);
 
 /****************************************************************************
  * Name: filemtd_initialize
